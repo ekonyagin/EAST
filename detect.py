@@ -7,8 +7,10 @@ from dataset import get_rotate_mat
 import numpy as np
 import lanms
 
+import cv2
 
-def resize_img(img):
+
+def resize_img_old(img):
 	'''resize image to be divisible by 32
 	'''
 	w, h = img.size
@@ -18,6 +20,20 @@ def resize_img(img):
 	resize_h = resize_h if resize_h % 32 == 0 else int(resize_h / 32) * 32
 	resize_w = resize_w if resize_w % 32 == 0 else int(resize_w / 32) * 32
 	img = img.resize((resize_w, resize_h), Image.BILINEAR)
+	ratio_h = resize_h / h
+	ratio_w = resize_w / w
+
+	return img, ratio_h, ratio_w
+
+def resize_img(img):
+	
+	h, w = img.shape[:2]
+	resize_w = w
+	resize_h = h
+
+	resize_h = resize_h if resize_h % 32 == 0 else int(resize_h / 32) * 32
+	resize_w = resize_w if resize_w % 32 == 0 else int(resize_w / 32) * 32
+	img = cv2.resize(img, (resize_w, resize_h))
 	ratio_h = resize_h / h
 	ratio_w = resize_w / w
 
@@ -152,10 +168,25 @@ def plot_boxes(img, boxes):
 	'''
 	if boxes is None:
 		return img
+
 	
 	draw = ImageDraw.Draw(img)
 	for box in boxes:
 		draw.polygon([box[0], box[1], box[2], box[3], box[4], box[5], box[6], box[7]], outline=(0,255,0))
+	return img
+
+def draw_boxes_cv(img, boxes):
+	#print("Boxes are:", boxes)
+	if boxes is None:
+		return img
+	for box in boxes:
+		print(len(box))
+		box = np.array(box[:8], dtype=np.int32)
+		print(box[::2], box[1::2])
+		pts_array = np.array([[x, y] for x,y in zip(box[::2], box[1::2])],dtype=np.int32)
+		print(pts_array)
+		cv2.polylines(img, [pts_array],True,(0,255,0))
+	
 	return img
 
 
@@ -181,17 +212,26 @@ def detect_dataset(model, device, test_img_path, submit_path):
 
 
 if __name__ == '__main__':
-	img_path    = '../ICDAR_2015/test_img/img_2.jpg'
 	model_path  = './pths/east_vgg16.pth'
-	res_img     = './res.bmp'
 	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+	print(f"Device is {device}")
 	model = EAST().to(device)
 	model.load_state_dict(torch.load(model_path))
 	model.eval()
-	img = Image.open(img_path)
 	
-	boxes = detect(img, model, device)
-	plot_img = plot_boxes(img, boxes)	
-	plot_img.save(res_img)
+	vid = cv2.VideoCapture(0)
+  
+	while(True):
+		# Capture the video frame
+		# by frame
+		ret, frame = vid.read()
+		if ret != 0:
+			boxes = detect(frame, model, device)
+			plot_img = draw_boxes_cv(frame, boxes)	
+			cv2.imshow('frame', frame)
+			if cv2.waitKey(1) & 0xFF == ord('q'):
+				break
+	vid.release()
+	cv2.destroyAllWindows()
 
 
